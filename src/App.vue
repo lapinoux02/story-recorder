@@ -18,6 +18,7 @@
       <div>
         <div class="button neutral shadow" :class="{ 'disabled': !this.currentBlob }" @click="replayRecording"><div class="material-icons">replay</div>Rejouer</div>
       </div>
+      <div class="small-pill shadow" v-if="currentDuration">{{ currentDuration.toFixed(2) + 's' }}</div>
     </div>
   </div>
   <div class="footer"><div class="button dark shadow" @click="downloadAll"><div class="material-icons">download</div>Télécharger</div></div>
@@ -47,6 +48,10 @@ export default {
       mediaRecorder: null,
       audioChunks: [],
 
+      currentAudioUrl: null,
+      currentAudio: null,
+      currentDuration: null,
+
       bookName: localStorage.getItem('bookName') || '',
 
       pages: [{}],
@@ -57,18 +62,32 @@ export default {
     navigator.mediaDevices.getUserMedia({audio: true}).then((stream) => this.mediaRecorder = new MediaRecorder(stream))
     this.loadPagesAudio()
   },
+  watch: {
+    currentBlob() {
+      this.setCurrentAudio()
+    }
+  },
   computed: {
     currentPage() {
       return this.pages[this.pageIndex]
     },
     currentBlob() {
       return this.currentPage?.audio
-    },
-    currentAudio() {
-      return this.currentBlob ? new Audio(URL.createObjectURL(this.currentBlob)) : null
     }
   },
   methods: {
+    setCurrentAudio() {
+      if (this.currentBlob) {
+        URL.revokeObjectURL(this.currentAudioUrl)
+        this.currentAudioUrl = URL.createObjectURL(this.currentBlob)
+        this.currentAudio = new Audio(this.currentAudioUrl)
+        this.currentAudio.addEventListener('loadedmetadata', () => this.currentDuration = this.currentAudio.duration)
+      } else {
+        this.currentAudio = null
+        this.currentAudioUrl = null
+        this.currentDuration = null
+      }
+    },
     saveBookName(name) {
       this.bookName = name
       localStorage.setItem('bookName', name)
@@ -77,6 +96,9 @@ export default {
       this.pages = [{}]
       this.bookName = ''
       this.pageIndex = 0
+      this.currentAudioUrl = null
+      this.currentAudio = null
+      this.currentDuration = null
       if (this.isRecording) {
         this.cancelRecording()
       }
@@ -303,6 +325,7 @@ export default {
     justify-content: center;
     align-items: center;
     .widget {
+      position: relative;
       padding: 20px;
       border-radius: 20px;
       background: var(--white);
@@ -311,16 +334,25 @@ export default {
       width: 80%;
       > :first-child {
         border-right: 1px solid var(--border);
-        padding-right: 20px;
-      }
-      > :last-child {
-        padding-left: 20px;
       }
       > * {
         flex: 1 0 0;
         display: flex;
+        flex-direction: column;
         justify-content: center;
         align-items: center;
+        gap: 10px;
+      }
+      .small-pill {
+        position: absolute;
+        bottom: -15px;
+        padding: 5px 10px;
+        border-radius: 5000px;
+        background: var(--dark);
+        color: var(--white);
+        font-size: 14px;
+        left: 50%;
+        transform: translateX(-50%);
       }
     }
   }
