@@ -7,7 +7,8 @@
   </div>
   <div class="nav">
     <div class="nav-button" @click="previousPage"  :class="{ 'disabled': pageIndex === 0 }"><div class="material-icons">chevron_left</div></div>
-    Page {{ pageIndex + 1 }}
+    <template v-if="pageIndex">Page {{ pageIndex }}</template>
+    <template v-else>Titre</template>
     <div class="nav-button" @click="nextPage" :class="{ 'disabled': !this.currentBlob }"><div class="material-icons">chevron_right</div></div>
   </div>
   <div class="content">
@@ -162,7 +163,7 @@ export default {
     async downloadAll() {
       const zip = new JSZip()
 
-      this.pages.forEach((page, index) => zip.file(`${String(index + 1).padStart(6, '0')}.wav`, page.audio))
+      this.pages.forEach((page, index) => zip.file(`${String(index).padStart(6, '0')}.wav`, page.audio))
 
       const content = await zip.generateAsync({ type: 'blob' })
       const url = URL.createObjectURL(content)
