@@ -4,6 +4,7 @@ import mkcert from 'vite-plugin-mkcert'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/story-recorder/',
   plugins: [vue(), mkcert()],
   server: {
     https: true,
