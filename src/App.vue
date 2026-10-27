@@ -28,6 +28,37 @@
 
 <script>
 import JSZip from 'jszip'
+import lamejsBundleUrl from 'lamejs/lame.all.js?url'
+
+let mp3EncoderPromise
+
+function loadMp3Encoder() {
+  if (window.lamejs?.Mp3Encoder) {
+    return Promise.resolve(window.lamejs.Mp3Encoder)
+  }
+
+  if (!mp3EncoderPromise) {
+    mp3EncoderPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = lamejsBundleUrl
+      script.onload = () => {
+        if (window.lamejs?.Mp3Encoder) {
+          resolve(window.lamejs.Mp3Encoder)
+        } else {
+          mp3EncoderPromise = null
+          reject(new Error('lamejs loaded without an MP3 encoder'))
+        }
+      }
+      script.onerror = () => {
+        mp3EncoderPromise = null
+        reject(new Error('Failed to load lamejs'))
+      }
+      document.head.appendChild(script)
+    })
+  }
+
+  return mp3EncoderPromise
+}
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -123,7 +154,7 @@ export default {
         }
       }
       this.mediaRecorder.onstop = () => {
-        this.currentPage.audio = new Blob(this.audioChunks, {type: 'audio/wav'})
+        this.currentPage.audio = new Blob(this.audioChunks, {type: this.mediaRecorder.mimeType})
         this.savePageAudio()
       }
     },
@@ -163,7 +194,11 @@ export default {
     async downloadAll() {
       const zip = new JSZip()
 
-      this.pages.forEach((page, index) => zip.file(`${String(index).padStart(6, '0')}.wav`, page.audio))
+      for (const [index, page] of this.pages.entries()) {
+        if (page.audio) {
+          zip.file(`${String(index).padStart(3, '0')}.mp3`, await this.convertToMp3(page.audio))
+        }
+      }
 
       const content = await zip.generateAsync({ type: 'blob' })
       const url = URL.createObjectURL(content)
@@ -172,6 +207,50 @@ export default {
       link.href = url
       link.download = `${this.bookName || 'recordings'}.zip`
       link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    },
+    async convertToMp3(blob) {
+      const audioContext = new AudioContext({ sampleRate: 44100 })
+
+      try {
+        const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer())
+        const channels = Math.min(audioBuffer.numberOfChannels, 2)
+        const Mp3Encoder = await loadMp3Encoder()
+        const encoder = new Mp3Encoder(channels, audioBuffer.sampleRate, 128)
+        const left = this.toInt16Samples(audioBuffer.getChannelData(0))
+        const right = channels === 2 ? this.toInt16Samples(audioBuffer.getChannelData(1)) : null
+        const mp3Chunks = []
+
+        for (let offset = 0; offset < left.length; offset += 1152) {
+          const leftChunk = left.subarray(offset, offset + 1152)
+          const encoded = channels === 2
+            ? encoder.encodeBuffer(leftChunk, right.subarray(offset, offset + 1152))
+            : encoder.encodeBuffer(leftChunk)
+
+          if (encoded.length > 0) {
+            mp3Chunks.push(encoded)
+          }
+        }
+
+        const finalChunk = encoder.flush()
+        if (finalChunk.length > 0) {
+          mp3Chunks.push(finalChunk)
+        }
+
+        return new Blob(mp3Chunks, { type: 'audio/mpeg' })
+      } finally {
+        await audioContext.close()
+      }
+    },
+    toInt16Samples(samples) {
+      const int16Samples = new Int16Array(samples.length)
+
+      for (let index = 0; index < samples.length; index++) {
+        const sample = Math.max(-1, Math.min(1, samples[index]))
+        int16Samples[index] = Math.round(sample < 0 ? sample * 32768 : sample * 32767)
+      }
+
+      return int16Samples
     },
 
     async savePageAudio() {
